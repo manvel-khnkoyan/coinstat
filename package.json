@@ -1,0 +1,16 @@
+{
+  "name": "coinstat",
+  "version": "0.0.1",
+  "scripts": {
+    "start": "node service.js",
+    "prettier": "npx prettier --write ."
+  },
+  "dependencies": {
+    "dotenv": "^8.2.0",
+    "node-binance-api": "^0.12.4",
+    "node-telegram-bot-api": "^0.51.0"
+  },
+  "devDependencies": {
+    "prettier": "2.2.1"
+  }
+}
