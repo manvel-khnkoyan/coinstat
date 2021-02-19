@@ -1,4 +1,4 @@
-const { createCurrencyAlert, deleteUserAlerts } = require("./currencies");
+const { createCurrencyAlert, deleteCurrencyAlerts } = require("./currencies");
 
 /*
  * Template is something like this:
@@ -43,12 +43,13 @@ function createUserAlert(userId, currency, price) {
   if (index in UsersDB) {
     // Check If Already Exist
     const findMe = (item) => item.currency === currency && item.price === price;
-    if (UsersDB.alerts.find(findMe)) {
-      return;
+    if (UsersDB[index].alerts.find(findMe)) {
+      return false;
     }
 
-    UsersDB.alerts.push({ currency, price });
+    UsersDB[index].alerts.push({ currency, price });
     createCurrencyAlert(currency, userId, price);
+    return true;
   }
 }
 
@@ -57,16 +58,30 @@ function createUserAlert(userId, currency, price) {
  * @param {Object} data
  * @returns {Object}
  */
-function deleteUserAlerts(userId, currency, price) {
+function deleteUserAlerts(userId, currency, price = "*") {
   const index = getIndex(userId);
+
+  // Find All Users Currencies
+  const currencies =
+    currency === "*"
+      ? [...new Set(UsersDB[index].alerts.map((item) => item.currency))]
+      : [currency];
+
   if (index in UsersDB) {
-    UsersDB.alerts = UsersDB.alerts.filter((item) => {
-      if (currency !== item.currency || currency !== "*") return true;
-      if (price !== item.price || price !== "*") return true;
-      return false;
+    const total = UsersDB[index].alerts.length;
+    // Delete Currency User Alerts
+    currencies.forEach((key) => deleteCurrencyAlerts(key, userId, price));
+
+    // Delete User Alerts
+    UsersDB[index].alerts = UsersDB[index].alerts.filter((item) => {
+      if (currency === "*") return false;
+      if (currency !== item.currency) return true;
+      if (price === "*") return false;
+      if (price !== item.price) return true;
     });
-    deleteUserAlerts(currency, userId, price);
+    return total !== UsersDB[index].alerts.length;
   }
+  return false;
 }
 
 /**
@@ -81,11 +96,11 @@ function deleteUser(id) {
   if (!user) return;
 
   user.alerts.forEach((alert) => {
-    const { currency, price } = alert;
-    deleteUserAlerts(currency, user.id, price);
+    const { currency } = alert;
+    deleteUserAlerts(user.id, currency, "*");
   });
   UsersDB[getIndex(id)] = null;
-  return false;
+  return true;
 }
 
 /**
@@ -100,7 +115,7 @@ function getUser(id) {
 }
 
 /**
- * Find User By Chat Id
+ * Find User By given function
  * @param {Function} fn
  * @param {Object}
  */
@@ -114,6 +129,8 @@ function findUser(fn) {
 module.exports = {
   createUser,
   deleteUser,
+  createUserAlert,
+  deleteUserAlerts,
   findUser,
   getUser,
 };

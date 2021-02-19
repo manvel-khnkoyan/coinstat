@@ -1,35 +1,40 @@
 const AlertEmmiter = require("./emiter");
+
 const {
   getCurrencies,
   deleteCurrency,
   updateCurrencyPrice,
 } = require("./data/currencies");
-const { getBinancePrice } = require("./process");
+const { getBinancePrice } = require("./binanceApi");
 
 let status = "Done";
 
-function loopAlerts(key, value, newPrice) {
-  // Validation
-  if (!(key in value)) return;
-  const { alerts, price, oldPrice, lastUpdatedDate } = value;
+function loopAlerts(currencyKey, currencyValue, newPrice) {
+  // Currency Values
+  const oldPrice = currencyValue.price;
+  const currencyAlerts = currencyValue.alerts;
+  const lastUpdatedDate = currencyValue.lastUpdatedDate;
 
   // When price has not changed
-  if (newPrice !== price) {
+  if (newPrice !== oldPrice) {
     // calculating the maximum and minimum prices for alerts that we need to send
-    const max = newPrice > price ? newPrice : price;
-    const min = newPrice > price ? price : newPrice;
+    const max = newPrice > oldPrice ? newPrice : oldPrice;
+    const min = newPrice < oldPrice ? newPrice : oldPrice;
 
     // Loop through subscribers
-    for (let i = 0; i < alerts.length; i++) {
-      const alert = alerts[i];
+    for (let i = 0; i < currencyAlerts.length; i++) {
+      const alert = currencyAlerts[i];
+      const userId = alert.userId;
+      const setPrice = alert.price;
 
       // When in alert
-      if (alert.price >= min && alert.price <= max) {
-        AlertEmmiter.emit("send-alert", {
+      if (setPrice >= min && setPrice <= max) {
+        AlertEmmiter.emit("alert", {
           userId,
-          alert,
-          oldPrice,
-          price: newPrice,
+          currency: currencyKey,
+          setPrice: setPrice,
+          oldPrice: oldPrice,
+          newPrice: newPrice,
           lastUpdatedDate,
         });
       }
@@ -37,11 +42,11 @@ function loopAlerts(key, value, newPrice) {
   }
 
   // Finally update the currency price
-  updateCurrencyPrice(key, { price: newPrice });
+  updateCurrencyPrice(currencyKey, { price: newPrice });
 }
 
-function loopCurrencies(data) {
-  const entries = getCurrencies().entries(data);
+function loopCurrencies() {
+  const entries = Object.entries(getCurrencies());
   const total = entries.length;
 
   // whene there is no any alert
@@ -53,7 +58,7 @@ function loopCurrencies(data) {
 
   // Indexing & updating status (specual for overload process controll)
   let index = 0;
-  const updateStatus = () => index++ === total && (status = "Finished");
+  const updateStatus = () => index++ >= total && (status = "Finished");
 
   // loop through currencies.key.alerts
   for (const [key, value] of entries) {
@@ -65,26 +70,31 @@ function loopCurrencies(data) {
 
     // fetch from
     getBinancePrice(key)
-      .then((result) => {
+      .then((newPrice) => {
         // When nothing has changed
-        if (result.price === value.price) return;
+        if (newPrice === value.price) return;
 
         // When is the first time or invalid price
-        if (!result.price) return;
+        if (value.price) {
+          loopAlerts(key, value, newPrice);
+        }
 
-        loopAlerts(key, value, result.price);
-        updateCurrencyPrice(key, price);
+        // then update new price
+        updateCurrencyPrice(key, newPrice);
+
+        // change status when finished
         updateStatus();
       })
       .catch((err) => {
         updateStatus();
-        console.log(err);
+        console.log(err.message);
       });
   }
 }
 
 function startProcess({ updateInterval }) {
   const interval = setInterval(() => loopCurrencies(), updateInterval);
+  console.log(`Process started with ${updateInterval} MS interval updates`);
 
   return () => {
     clearInterval(interval);
